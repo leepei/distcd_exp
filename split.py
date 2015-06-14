@@ -28,7 +28,7 @@ nr_machines = len(machines)
 
 dst_path = ''
 src_basename = os.path.basename(src_path)
-if NFS_flag == 1:
+if NFS_flag == 0:
     dst_path = '{0}.sub'.format(src_basename)
 
 cmd = 'wc -l {0}'.format(src_path)
@@ -37,7 +37,7 @@ nr_instances = int(p.stdout.read().strip().split()[0])
 p.communicate()
 
 
-if (NFS_flag == 1):
+if (NFS_flag == 0):
     while True:
         temp_dir = 'tmp_{0}'.format(uuid.uuid4())
         if not os.path.exists(temp_dir): break
@@ -54,7 +54,7 @@ cmd = 'split -l {0} --numeric-suffixes -a {1} {2} {3}.'.format(
 p = subprocess.Popen(cmd, shell=True)
 p.communicate()
 
-if (NFS_flag == 1):
+if (NFS_flag == 0):
     print('Sending data...')
     for i, machine in enumerate(machines):
         print i, machine
