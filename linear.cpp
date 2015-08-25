@@ -549,9 +549,8 @@ static void solve_l2r_l1l2_svc(
 
 		for (i=0;i<l;i++)
 			alpha_inc[i] = alpha[i] - alpha_orig[i];
-		if (line_search)
-			for (i=0;i<w_size;i++)
-				allreduce_buffer[i] = w[i] - w_orig[i];
+		for (i=0;i<w_size;i++)
+			allreduce_buffer[i] = w[i] - w_orig[i];
 		if (line_search)
 		{
 			max_step = INF;
@@ -574,15 +573,7 @@ static void solve_l2r_l1l2_svc(
 			mpi_allreduce(&max_step, 1, MPI_DOUBLE, MPI_MIN);
 		}
 
-		if (line_search)
-			mpi_allreduce(allreduce_buffer, reduce_length, MPI_DOUBLE, MPI_SUM);
-		else
-		{
-			mpi_allreduce(w, reduce_length, MPI_DOUBLE, MPI_SUM);
-			int size = mpi_get_size();
-			for (i=0;i<w_size;i++)
-				w[i] /= size;
-		}
+		mpi_allreduce(allreduce_buffer, reduce_length, MPI_DOUBLE, MPI_SUM);
 
 		if (line_search)
 		{
@@ -611,10 +602,10 @@ static void solve_l2r_l1l2_svc(
 				int int_new_k = int(new_k);
 				eta = powi(back_track, max(0, int_new_k));
 			}
-			for (i=0;i<w_size;i++)
-				w[i] = w_orig[i] + eta * allreduce_buffer[i];
 		}
 
+		for (i=0;i<w_size;i++)
+			w[i] = w_orig[i] + eta * allreduce_buffer[i];
 		for (i=0;i<l;i++)
 			alpha[i] = alpha_orig[i] + eta * alpha_inc[i];
 
@@ -623,11 +614,15 @@ static void solve_l2r_l1l2_svc(
 		clock_gettime(CLOCK_REALTIME, &all_start);
 	}
 
+	info("\noptimization finished, #iter = %d\n",out_iter);
+
 	int nSV = 0;
 	for(i=0; i<l; i++)
 		if(alpha[i] > 0)
 			++nSV;
 	mpi_allreduce_notimer(&nSV, 1, MPI_INT, MPI_SUM);
+
+	info("nSV = %d\n",nSV);
 
 	delete [] QD;
 	delete [] alpha;
@@ -636,6 +631,160 @@ static void solve_l2r_l1l2_svc(
 	delete [] alpha_inc;
 	delete [] alpha_orig;
 	delete [] w_orig;
+}
+
+static void solve_l2r_l1l2_disdca(
+	const problem *prob, double *w,
+	double Cp, double Cn, int solver_type)
+{
+	int l = prob->l;
+	int w_size = prob->n;
+	int size = mpi_get_size();
+	int i, s, iter = 0;
+	double C, d, G;
+	double *QD = new double[l];
+	int max_iter = 100000;
+	int max_inner_iter;
+	int *index = new int[l];
+	double *alpha = new double[l];
+	schar *y = new schar[l];
+	int converged = 0;
+	int out_iter = 0;
+	int L2 = 1;
+	max_inner_iter = 1;
+
+	// PG: projected gradient, for shrinking and stopping
+	double PG;
+
+	// default solver_type: L2R_L2LOSS_SVC_DUAL
+	double diag[3] = {0.5/Cn, 0, 0.5/Cp};
+	double upper_bound[3] = {INF, 0, INF};
+	if(solver_type == L1_DISDCA)
+	{
+		L2 = 0;
+		diag[0] = 0;
+		diag[2] = 0;
+		upper_bound[0] = Cn;
+		upper_bound[2] = Cp;
+	}
+
+	for(i=0; i<l; i++)
+	{
+		if(prob->y[i] > 0)
+		{
+			y[i] = +1;
+		}
+		else
+		{
+			y[i] = -1;
+		}
+	}
+
+	for(i=0; i<l; i++)
+		alpha[i] = 0;
+
+	for(i=0; i<w_size; i++)
+		w[i] = 0;
+	for(i=0; i<l; i++)
+	{
+		QD[i] = 0;
+		feature_node *xi = prob->x[i];
+		while (xi->index != -1)
+		{
+			double val = xi->value;
+			QD[i] += val*val;
+			w[xi->index-1] += y[i]*alpha[i]*val;
+			xi++;
+		}
+		QD[i] *= size;
+		QD[i] += diag[GETI(i)];
+		index[i] = i;
+	}
+
+	while (!converged && out_iter < max_iter)
+	{
+		out_iter++;
+		iter = 0;
+		for (int inner = 0;inner<max_inner_iter;inner++)
+		{
+			for (i=0; i<l; i++)
+			{
+				int j = i+rand()%(l - i);
+				swap(index[i], index[j]);
+			}
+
+
+			for (s=0; s<l; s++)
+			{
+				i = index[s];
+				G = 0;
+				schar yi = y[i];
+
+				feature_node *xi = prob->x[i];
+				while(xi->index!= -1)
+				{
+					G += w[xi->index-1]*(xi->value);
+					xi++;
+				}
+				G = G*yi-1;
+
+				C = upper_bound[GETI(i)];
+				G += alpha[i]*diag[GETI(i)];
+
+				PG = 0;
+				if (alpha[i] == 0)
+				{
+					if (G < 0)
+						PG = G;
+				}
+				else if (alpha[i] == C)
+				{
+					if (G > 0)
+						PG = G;
+				}
+				else
+					PG = G;
+
+				if(fabs(PG) > 1.0e-12)
+				{
+					double alpha_old = alpha[i];
+					alpha[i] = min(max(alpha[i] - G/QD[i], 0.0), C);
+					d = (alpha[i] - alpha_old)*yi*size;
+					xi = prob->x[i];
+					while (xi->index != -1)
+					{
+						w[xi->index-1] += d*xi->value;
+						xi++;
+					}
+				}
+			}
+
+			iter++;
+		}
+
+		mpi_allreduce(w, w_size, MPI_DOUBLE, MPI_SUM);
+		for (i=0;i<w_size;i++)
+			w[i] /= size;
+
+		converged += compute_fun(w, alpha, Cp, L2, prob);
+		clock_gettime(CLOCK_REALTIME, &start1);
+		clock_gettime(CLOCK_REALTIME, &all_start);
+	}
+
+	info("\noptimization finished, #iter = %d\n",out_iter);
+
+	int nSV = 0;
+	for(i=0; i<l; i++)
+		if(alpha[i] > 0)
+			++nSV;
+	mpi_allreduce_notimer(&nSV, 1, MPI_INT, MPI_SUM);
+
+	info("nSV = %d\n",nSV);
+
+	delete [] QD;
+	delete [] alpha;
+	delete [] y;
+	delete [] index;
 }
 
 #undef GETI
@@ -795,6 +944,12 @@ static void train_one(const problem *prob, const parameter *param, double *w, do
 			break;
 		case L1_DSVM:
 			solve_l2r_l1l2_svc(prob, w, Cp, Cn, L2R_L1LOSS_SVC_DUAL, 1);
+			break;
+		case L2_DISDCA:
+			solve_l2r_l1l2_disdca(prob, w, Cp, Cn, L2_DISDCA);
+			break;
+		case L1_DISDCA:
+			solve_l2r_l1l2_disdca(prob, w, Cp, Cn, L1_DISDCA);
 			break;
 		default:
 		{
@@ -983,7 +1138,7 @@ double predict(const model *model_, const feature_node *x)
 
 static const char *solver_type_table[]=
 {
-"L2_QBOE", "L1_QBOE", "L2_QBOA", "L1_QBOA", "L2_DSVM", "L1_DSVM", "L2_TRON"}; /* solver_type */
+"L2_QBOE", "L1_QBOE", "L2_QBOA", "L1_QBOA", "L2_DSVM", "L1_DSVM", "L2_TRON", "L2_DISDCA", "L1_DISDCA"}; /* solver_type */
 
 int save_model(const char *model_file_name, const struct model *model_)
 {
@@ -1185,7 +1340,7 @@ const char *check_parameter(const problem *prob, const parameter *param)
 	if(param->C <= 0)
 		return "C <= 0";
 
-	if(param->solver_type != L2_QBOE && param->solver_type != L2_QBOA && param->solver_type != L2_DSVM && param->solver_type != L1_QBOE && param->solver_type != L1_QBOA && param->solver_type != L1_DSVM && param->solver_type != L2_TRON)
+	if(param->solver_type != L2_QBOE && param->solver_type != L2_QBOA && param->solver_type != L2_DSVM && param->solver_type != L1_QBOE && param->solver_type != L1_QBOA && param->solver_type != L1_DSVM && param->solver_type != L2_TRON && param->solver_type != L2_DISDCA && param->solver_type != L1_DISDCA)
 		return "unknown solver type";
 
 	return NULL;

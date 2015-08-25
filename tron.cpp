@@ -65,6 +65,7 @@ TRON::~TRON()
 
 void TRON::tron(double *w)
 {
+	int total_iter = 0;
 	// Parameters for updating the iterates.
 	double eta0 = 1e-4, eta1 = 0.25, eta2 = 0.75;
 
@@ -72,22 +73,20 @@ void TRON::tron(double *w)
 	double sigma1 = 0.25, sigma2 = 0.5, sigma3 = 4;
 
 	int n = fun_obj->get_nr_variable();
-	int i, total_iter;
+	int i, cg_iter;
 	double delta, snorm, one=1.0;
 	double alpha, f, fnew, prered, actred, gs;
 	int search = 1, iter = 1, inc = 1;
-	int cg_iter;
 	double *s = new double[n];
 	double *r = new double[n];
 	double *w_new = new double[n];
 	double *g = new double[n];
 	int conv = 0;
-	total_iter = 0;
 
 	for (i=0; i<n; i++)
 		w[i] = 0;
 
-	total_iter++;
+	total_iter += 1;
 	info("Iter %d\n",total_iter);
 	f = fun_obj->fun(w, conv);
 	fun_obj->grad(w, g);
@@ -112,7 +111,7 @@ void TRON::tron(double *w)
 
 		gs = ddot_(&n, g, &inc, s, &inc);
 		prered = -0.5*(gs-ddot_(&n, s, &inc, r, &inc));
-		total_iter++;
+		total_iter += 1;
 		info("Iter %d\n",total_iter);
 		fnew = fun_obj->fun(w_new, conv);
 		if (conv)

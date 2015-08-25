@@ -49,7 +49,7 @@ struct problem
 	double bias;            /* < 0 if no bias term */  
 };
 
-enum { L2_QBOE, L1_QBOE, L2_QBOA, L1_QBOA, L2_DSVM, L1_DSVM, L2_TRON}; /* solver_type */
+enum { L2_QBOE, L1_QBOE, L2_QBOA, L1_QBOA, L2_DSVM, L1_DSVM, L2_TRON, L2_DISDCA, L1_DISDCA}; /* solver_type */
 
 struct parameter
 {

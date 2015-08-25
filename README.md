@@ -17,15 +17,15 @@ leechingpei@gmail.com
 Solvers
 =======
 The following solvers are supported.
-	0 -- quadratic box-constrained optimization with exact line search for L2-loss SVM
-	1 -- quadratic box-constrained optimization with exact line search for L1-loss SVM
-	2 -- quadratic box-constrained optimization with Armijo line search for L2-loss SVM
-	3 -- quadratic box-constrained optimization with Armijo line search for L1-loss SVM
-	4 -- DSVM-AVE/CoCoA for L2-loss SVM
-	5 -- DSVM-AVE/CoCoA for L1-loss SVM
-	6 -- Trust region Newton method for L2-loss SVM (primal)
-	7 -- DisDCA practical variant for L2-loss SVM
-	8 -- DisDCA practical variant for L1-loss SVM
+-	0 -- quadratic box-constrained optimization with exact line search for L2-loss SVM
+-	1 -- quadratic box-constrained optimization with exact line search for L1-loss SVM
+-	2 -- quadratic box-constrained optimization with Armijo line search for L2-loss SVM
+-	3 -- quadratic box-constrained optimization with Armijo line search for L1-loss SVM
+-	4 -- DSVM-AVE/CoCoA for L2-loss SVM
+-	5 -- DSVM-AVE/CoCoA for L1-loss SVM
+-	6 -- Trust region Newton method for L2-loss SVM (primal)
+-	7 -- DisDCA practical variant for L2-loss SVM
+-	8 -- DisDCA practical variant for L1-loss SVM
 
 
 Solver 6 is directly copied from MPI LIBLINEAR. Its documentation is available in
