@@ -11,6 +11,11 @@
 #include <map>
 #include <time.h>
 
+#ifdef __MACH__
+#define CLOCK_REALTIME 0
+#define clock_gettime(a,b) 0;
+#endif
+
 double opt_val;
 double eps;
 double best_primal;
@@ -967,7 +972,7 @@ static void train_one(const problem *prob, const parameter *param, double *w, do
 	mpi_allreduce_notimer(runtime, 4, MPI_DOUBLE, MPI_SUM);
 	for (int i=0;i<4;i++)
 		runtime[i] /= mpi_get_size();
-	info("Computation Time: %g s, Sync Time: %g s, Communication Time: %g s, IO Time: %g s\n", runtime[0], runtime[1], runtime[2], runtime[3]);
+	info("Computation Time: %g s, Sync Time: %g s, Communication Time: %g s, IO Time: %g s\n", runtime[0], runtime[2], runtime[1], runtime[3]);
 }
 
 //
